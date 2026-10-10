@@ -295,6 +295,9 @@ export async function applyPaymentResult(
     ? await db.query.bookings.findFirst({ where: eq(bookings.paymentOrderId, orderId) })
     : undefined;
 
+  // Unsigned noise about orders we never created is not worth storing.
+  if (!existing && !signatureValid) return null;
+
   await db.insert(paymentEvents).values({
     bookingId: existing?.id ?? null,
     source,
