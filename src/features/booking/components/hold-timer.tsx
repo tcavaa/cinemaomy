@@ -3,12 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 
-function remaining(expiresAt: string) {
-  return Math.max(0, Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000));
+/** `deadline` is on this browser's own clock, so a wrong system time can't end the hold early. */
+function remaining(deadline: number) {
+  return Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
 }
 
-export function HoldTimer({ expiresAt, onExpire, className }: { expiresAt: string; onExpire: () => void; className?: string }) {
-  const [seconds, setSeconds] = useState(() => remaining(expiresAt));
+export function HoldTimer({ deadline, onExpire, className }: { deadline: number; onExpire: () => void; className?: string }) {
+  const [seconds, setSeconds] = useState(() => remaining(deadline));
   const onExpireRef = useRef(onExpire);
 
   useEffect(() => {
@@ -17,7 +18,7 @@ export function HoldTimer({ expiresAt, onExpire, className }: { expiresAt: strin
 
   useEffect(() => {
     const tick = () => {
-      const left = remaining(expiresAt);
+      const left = remaining(deadline);
       setSeconds(left);
       if (left === 0) {
         window.clearInterval(id);
@@ -27,7 +28,7 @@ export function HoldTimer({ expiresAt, onExpire, className }: { expiresAt: strin
     const id = window.setInterval(tick, 1000);
     tick();
     return () => window.clearInterval(id);
-  }, [expiresAt]);
+  }, [deadline]);
 
   const mm = String(Math.floor(seconds / 60)).padStart(2, "0");
   const ss = String(seconds % 60).padStart(2, "0");

@@ -47,6 +47,9 @@ export async function POST(request: NextRequest) {
         accessToken: booking.accessToken,
         amount: booking.amount,
         expiresAt: booking.expiresAt.toISOString(),
+        // Seconds left on the hold by the server's clock. Browsers count down from
+        // this rather than comparing expiresAt with their own (possibly wrong) clock.
+        holdSeconds: Math.max(0, Math.floor((booking.expiresAt.getTime() - Date.now()) / 1000)),
         paymentToken,
       },
       { status: 201, headers: { "Cache-Control": "no-store" } },

@@ -20,8 +20,10 @@ type Reservation = {
   reference: string;
   accessToken: string;
   amount: number;
-  expiresAt: string;
   paymentToken: string;
+  holdSeconds: number;
+  /** When the hold ends, measured on this browser's clock (never compared to server time). */
+  deadline: number;
 };
 
 type Customer = { name: string; email: string; phone: string };
@@ -119,7 +121,8 @@ export function BookingFlow({ screening, seats, initialTaken, user, bookingNote 
       });
       const body = await res.json().catch(() => ({}));
       if (res.ok) {
-        setReservation(body as Reservation);
+        const holdSeconds = typeof body.holdSeconds === "number" ? body.holdSeconds : 15 * 60;
+        setReservation({ ...(body as Omit<Reservation, "deadline">), holdSeconds, deadline: Date.now() + holdSeconds * 1000 });
         setPaymentState("open");
         setPaymentError(null);
         setStep("payment");
@@ -153,24 +156,32 @@ export function BookingFlow({ screening, seats, initialTaken, user, bookingNote 
     router.push(`/tickets/${reservation.bookingId}?k=${encodeURIComponent(reservation.accessToken)}`);
   }
 
-  async function abandonHold(nextStep: Step = "seats") {
-    if (reservation) {
-      const { bookingId, accessToken } = reservation;
-      const res = await fetch(`/api/bookings/${bookingId}`, {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ k: accessToken }),
-      }).catch(() => null);
-      const data = res?.ok ? ((await res.json()) as { status?: string }) : null;
-      // The payment may have gone through in the meantime.
-      if (data?.status === "paid") {
-        router.push(`/tickets/${bookingId}?k=${encodeURIComponent(accessToken)}`);
-        return;
-      }
+  /** Frees the held seats. Returns true if the payment had in fact gone through. */
+  async function releaseHold({ bookingId, accessToken }: Reservation) {
+    const res = await fetch(`/api/bookings/${bookingId}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ k: accessToken }),
+    }).catch(() => null);
+    const data = res?.ok ? ((await res.json()) as { status?: string }) : null;
+    if (data?.status === "paid") {
+      router.push(`/tickets/${bookingId}?k=${encodeURIComponent(accessToken)}`);
+      return true;
     }
+    return false;
+  }
+
+  async function abandonHold(nextStep: Step = "seats") {
+    if (reservation && (await releaseHold(reservation))) return;
     setReservation(null);
     setStep(nextStep);
     refreshTaken();
+  }
+
+  function onHoldExpired() {
+    setPaymentState("expired");
+    // Give the seats back straight away rather than leaving them blocked.
+    if (reservation) releaseHold(reservation).then(() => refreshTaken());
   }
 
   const locked = step === "payment";
@@ -292,8 +303,8 @@ export function BookingFlow({ screening, seats, initialTaken, user, bookingNote 
               <div className="flex flex-col gap-4">
                 {paymentState !== "expired" && (
                   <HoldTimer
-                    expiresAt={reservation.expiresAt}
-                    onExpire={() => setPaymentState("expired")}
+                    deadline={reservation.deadline}
+                    onExpire={onHoldExpired}
                     className="border-y border-ink/15 py-2.5 text-ink-2"
                   />
                 )}
