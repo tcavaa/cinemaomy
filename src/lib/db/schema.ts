@@ -239,6 +239,7 @@ export const bookingSeats = pgTable(
   (t) => [
     primaryKey({ columns: [t.screeningId, t.seatId] }),
     index("booking_seats_booking_idx").on(t.bookingId),
+    index("booking_seats_seat_idx").on(t.seatId),
   ],
 );
 
